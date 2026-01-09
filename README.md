@@ -154,4 +154,4 @@ manifest:
       url: https://github.com/CANnectivity/cannectivity.git
       revision: main
       path: custom/cannectivity # adjust the path as needed
-```
+``````
