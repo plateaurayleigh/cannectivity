@@ -1,7 +1,7 @@
 name: Build
 
 on:
-  workflow_dispatch: # 手动触发开关
+  workflow_dispatch:
   push:
   pull_request:
   schedule:
@@ -15,7 +15,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, macos-15, windows-2022]
+        os: [ubuntu-24.04] # 为了加快速度，只留 Ubuntu
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
@@ -40,50 +40,26 @@ jobs:
         working-directory: cannectivity
         shell: bash
         run: |
-          if [ "${{ runner.os }}" = "Windows" ]; then
-            EXTRA_TWISTER_FLAGS="--short-build-path -O/tmp/twister-out"
-          fi
-          west twister -T app -v --inline-logs --integration $EXTRA_TWISTER_FLAGS
+          west twister -T app -v --inline-logs --integration
 
+      # =========== 关键修改：在这里立刻上传 ===========
+      - name: Upload MKS Firmware Immediately
+        uses: actions/upload-artifact@v4
+        with:
+          name: mks_firmware_pack
+          # 精准匹配 mks 的 bin 文件
+          path: cannectivity/twister-out/mks_canable_v20/**/*.bin
+      # ============================================
+
+      # 下面的测试步骤即使把文件夹删了，我们也已经拿到固件了
       - name: Run firmware tests
         working-directory: cannectivity
-        if: startsWith(runner.os, 'Linux')
         shell: bash
         run: |
-          # Limit to one concurrent instance as the USBIP port is reused between instances
           west twister -T app -v --inline-logs --platform native_sim/native/64 -j1
 
       - name: Run tests
         working-directory: cannectivity
         shell: bash
         run: |
-          if [ "${{ runner.os }}" = "Windows" ]; then
-            EXTRA_TWISTER_FLAGS="--short-build-path -O/tmp/twister-out"
-          fi
-          west twister -T tests -v --inline-logs --integration $EXTRA_TWISTER_FLAGS
-
-      - name: Print ccache stats
-        if: runner.os != 'Windows'
-        run: |
-          ccache -s -vv
-
-      # --- 调试步骤：列出所有生成的文件 (仅 Linux) ---
-      - name: Debug - List Generated Files
-        if: runner.os == 'Linux'
-        run: |
-          echo "=== 正在搜索 bin 文件 ==="
-          find cannectivity/twister-out -name "*.bin"
-          echo "=== 正在搜索 hex 文件 ==="
-          find cannectivity/twister-out -name "*.hex"
-          echo "=== 检查目录结构 ==="
-          ls -R cannectivity/twister-out || echo "twister-out 目录不存在"
-
-      # --- 上传步骤：上传 twister-out 下所有 bin 和 hex (仅 Linux) ---
-      - name: Upload All Firmware
-        uses: actions/upload-artifact@v4
-        if: always() && runner.os == 'Linux'
-        with:
-          name: all_firmware
-          path: |
-            cannectivity/twister-out/**/*.bin
-            cannectivity/twister-out/**/*.hex
+          west twister -T tests -v --inline-logs --integration
