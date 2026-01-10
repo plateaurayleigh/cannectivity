@@ -1,6 +1,7 @@
 name: Build
 
 on:
+  workflow_dispatch: # 添加手动触发按钮
   push:
   pull_request:
   schedule:
@@ -65,3 +66,14 @@ jobs:
         if: runner.os != 'Windows'
         run: |
           ccache -s -vv
+
+      # --- 修正的部分开始 ---
+      - name: Upload MKS Firmware
+        uses: actions/upload-artifact@v4
+        # 只在 Ubuntu 上上传，避免多平台重复上传导致冲突
+        if: runner.os == 'Linux'
+        with:
+          name: mks_canable_firmware
+          # 注意：因为 checkout 指定了 path: cannectivity，所以这里要加上 cannectivity/ 前缀
+          path: cannectivity/twister-out/mks_canable_v20/**/*.bin
+      # --- 修正的部分结束 ---
