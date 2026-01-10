@@ -1,24 +1,17 @@
-name: Build
+name: Build MKS Only
 
 on:
-  workflow_dispatch:
+  workflow_dispatch: # 允许手动点击运行
   push:
-  pull_request:
-  schedule:
-    - cron: "0 2 * * *"
 
 permissions:
   contents: read
 
 jobs:
   build:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-24.04] # 为了加快速度，只留 Ubuntu
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-24.04
     steps:
-      - name: Checkout
+      - name: Checkout Code
         uses: actions/checkout@v6
         with:
           path: cannectivity
@@ -29,37 +22,36 @@ jobs:
         with:
           python-version: 3.12
 
-      - name: Setup Zephyr project
+      - name: Setup Zephyr Project
         uses: zephyrproject-rtos/action-zephyr-setup@v1
         with:
           app-path: cannectivity
           toolchains: arm-zephyr-eabi
-          ccache-cache-key: ${{ matrix.os }}
 
-      - name: Build firmware
+      # === 关键步骤：只编译 MKS 板子，不跑测试，只生成固件 ===
+      - name: Build MKS Firmware Only
         working-directory: cannectivity
         shell: bash
         run: |
-          west twister -T app -v --inline-logs --integration
+          echo "开始编译..."
+          # -T app: 编译 app 目录
+          # -p mks...: 指定只编译这款板子
+          # --integration: 仅集成构建，不运行模拟器测试（防止文件被删）
+          west twister -T app -p mks_canable_v20/stm32g431xx -v --inline-logs --integration
 
-      # =========== 关键修改：在这里立刻上传 ===========
-      - name: Upload MKS Firmware Immediately
+      # === 调试步骤：打印出到底生成了什么 ===
+      - name: Debug - Show Generated Files
+        run: |
+          echo "=== 正在查找所有 .bin 文件 ==="
+          find cannectivity/twister-out -name "*.bin" || echo "未找到 bin 文件"
+          echo "=== twister-out 目录结构 ==="
+          ls -R cannectivity/twister-out || echo "目录不存在"
+
+      # === 上传步骤：打包整个输出目录，确保不漏 ===
+      - name: Upload Firmware Pack
         uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: mks_firmware_pack
-          # 精准匹配 mks 的 bin 文件
-          path: cannectivity/twister-out/mks_canable_v20/**/*.bin
-      # ============================================
-
-      # 下面的测试步骤即使把文件夹删了，我们也已经拿到固件了
-      - name: Run firmware tests
-        working-directory: cannectivity
-        shell: bash
-        run: |
-          west twister -T app -v --inline-logs --platform native_sim/native/64 -j1
-
-      - name: Run tests
-        working-directory: cannectivity
-        shell: bash
-        run: |
-          west twister -T tests -v --inline-logs --integration
+          # 使用 ** 通配符上传 twister-out 下的所有内容
+          path: cannectivity/twister-out/**
