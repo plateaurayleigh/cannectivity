@@ -1,7 +1,7 @@
 name: Build
 
 on:
-  workflow_dispatch: # 添加手动触发按钮
+  workflow_dispatch: # 手动触发开关
   push:
   pull_request:
   schedule:
@@ -67,13 +67,23 @@ jobs:
         run: |
           ccache -s -vv
 
-      # --- 修正的部分开始 ---
-      - name: Upload MKS Firmware
-        uses: actions/upload-artifact@v4
-        # 只在 Ubuntu 上上传，避免多平台重复上传导致冲突
+      # --- 调试步骤：列出所有生成的文件 (仅 Linux) ---
+      - name: Debug - List Generated Files
         if: runner.os == 'Linux'
+        run: |
+          echo "=== 正在搜索 bin 文件 ==="
+          find cannectivity/twister-out -name "*.bin"
+          echo "=== 正在搜索 hex 文件 ==="
+          find cannectivity/twister-out -name "*.hex"
+          echo "=== 检查目录结构 ==="
+          ls -R cannectivity/twister-out || echo "twister-out 目录不存在"
+
+      # --- 上传步骤：上传 twister-out 下所有 bin 和 hex (仅 Linux) ---
+      - name: Upload All Firmware
+        uses: actions/upload-artifact@v4
+        if: always() && runner.os == 'Linux'
         with:
-          name: mks_canable_firmware
-          # 注意：因为 checkout 指定了 path: cannectivity，所以这里要加上 cannectivity/ 前缀
-          path: cannectivity/twister-out/mks_canable_v20/**/*.bin
-      # --- 修正的部分结束 ---
+          name: all_firmware
+          path: |
+            cannectivity/twister-out/**/*.bin
+            cannectivity/twister-out/**/*.hex
